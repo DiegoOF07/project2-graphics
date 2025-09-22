@@ -1,34 +1,23 @@
-// snell.rs
+// snell.rs - Versión actualizada con soporte de texturas
 use raylib::prelude::*;
-use crate::cube::Cube;
+use crate::block::Block;
 use crate::light::Light;
 use crate::ray_intersect::{Intersect, RayIntersect};
+use crate::textures::TextureManager;
 
-/// Calcula el vector reflejado según la ley de reflexión.
-/// `incident`: dirección del rayo incidente (normalizado).
-/// `normal`: normal de la superficie (normalizada).
+/// Reflexión: R = I - 2(N·I)N
 pub fn reflect(incident: &Vector3, normal: &Vector3) -> Vector3 {
     *incident - *normal * 2.0 * incident.dot(*normal)
 }
 
-/// Calcula el vector refractado según la Ley de Snell.
-/// `incident`: dirección del rayo incidente (normalizado).
-/// `normal`: normal de la superficie (normalizada).
-/// `refractive_index`: índice de refracción del material (ej. vidrio ~1.5).
-///
-/// Devuelve el vector refractado. Si ocurre **reflexión interna total**, 
-/// devuelve `Vector3::zero()` para indicar que no hay refracción.
+/// Refracción según la ley de Snell
 pub fn refract(incident: &Vector3, normal: &Vector3, refractive_index: f32) -> Vector3 {
-    // Coseno del ángulo entre el rayo incidente y la normal
     let mut cosi = incident.dot(*normal).clamp(-1.0, 1.0);
-
-    // Índices de refracción
-    let mut etai = 1.0; // aire (n ~ 1.0)
+    let mut etai = 1.0;
     let mut etat = refractive_index;
     let mut n = *normal;
 
     if cosi > 0.0 {
-        // El rayo está dentro del material y sale al aire
         std::mem::swap(&mut etai, &mut etat);
         n = -n;
     } else {
@@ -39,41 +28,29 @@ pub fn refract(incident: &Vector3, normal: &Vector3, refractive_index: f32) -> V
     let k = 1.0 - eta * eta * (1.0 - cosi * cosi);
 
     if k < 0.0 {
-        // Reflexión interna total
         Vector3::zero()
     } else {
         *incident * eta + n * (eta * cosi - k.sqrt())
     }
 }
 
-/// Traza un rayo en la escena con múltiples rebotes
-///
-/// # Parámetros
-/// - `origin`: punto de inicio del rayo
-/// - `dir`: dirección normalizada del rayo
-/// - `depth`: profundidad actual de recursión
-/// - `max_depth`: límite de rebotes
-/// - `scene`: lista de cubos (objetos en la escena)
-/// - `light`: fuente de luz
-///
-/// # Retorno
-/// Vector3 con el color calculado (RGB en [0,1])
+/// Raytracer con soporte de texturas
 pub fn trace_ray(
     origin: Vector3,
     dir: Vector3,
     depth: u32,
     max_depth: u32,
-    scene: &[Cube],
+    scene: &[Block],
     light: &Light,
+    texture_manager: &TextureManager,
 ) -> Vector3 {
     if depth > max_depth {
-        return Vector3::new(0.2, 0.3, 0.6); // fondo (azul cielo)
+        return Vector3::new(0.2, 0.3, 0.6); // Cielo
     }
 
-    // Buscar intersección más cercana
     let mut closest: Option<Intersect> = None;
-    for cube in scene {
-        let hit = cube.ray_intersect(&origin, &dir);
+    for block in scene {
+        let hit = block.ray_intersect(&origin, &dir);
         if hit.is_intersecting {
             if closest.is_none() || hit.distance < closest.as_ref().unwrap().distance {
                 closest = Some(hit);
@@ -82,22 +59,59 @@ pub fn trace_ray(
     }
 
     if let Some(intersect) = closest {
-        // === Difuso (Lambert) ===
-        let light_dir = (light.position - intersect.point).normalized();
-        let diff = intersect.normal.dot(light_dir).max(0.0) * light.intensity;
-        let mut color = intersect.material.diffuse * diff;
+        // Obtener color base del material o textura
+        let mut base_color = intersect.material.diffuse;
+        
+        // Aplicar textura si existe
+        if let Some(texture_path) = &intersect.material.texture {
+            let texture_color = texture_manager.sample_texture(texture_path, intersect.u, intersect.v);
+            base_color = base_color * texture_color; // Multiplicar colores
+        }
 
-        // === Reflexión ===
+        // Modificar normal si hay normal map
+        let mut surface_normal = intersect.normal;
+        if let Some(normal_map_path) = &intersect.material.normal_map_id {
+            let map_normal = texture_manager.sample_normal_map(normal_map_path, intersect.u, intersect.v);
+            // En una implementación completa, aquí aplicarías la transformación TBN
+            // Para simplificar, mezclamos las normales
+            surface_normal = (surface_normal + map_normal * 0.5).normalized();
+        }
+
+        // Iluminación difusa
+        let light_dir = (light.position - intersect.point).normalized();
+        let diffuse_intensity = surface_normal.dot(light_dir).max(0.0) * light.intensity;
+        
+        // Color final con albedo
+        let mut final_color = base_color * light.color * diffuse_intensity * intersect.material.albedo[0];
+
+        // Componente especular
+        if intersect.material.specular > 0.0 {
+            let view_dir = (-dir).normalized();
+            let reflect_dir = reflect(&(-light_dir), &surface_normal);
+            let spec = view_dir.dot(reflect_dir).max(0.0).powf(intersect.material.specular);
+            let specular_color = light.color * spec * intersect.material.albedo[1];
+            final_color = final_color + specular_color;
+        }
+
+        // Reflexiones
         if intersect.material.reflectivity > 0.0 {
-            let reflected = reflect(&dir, &intersect.normal).normalized();
-            let reflected_color = trace_ray(intersect.point, reflected, depth + 1, max_depth, scene, light);
-            color = color * (1.0 - intersect.material.reflectivity)
+            let reflected_dir = reflect(&dir, &surface_normal).normalized();
+            let reflection_origin = intersect.point + surface_normal * 1e-4; // Evitar auto-intersección
+            let reflected_color = trace_ray(
+                reflection_origin,
+                reflected_dir,
+                depth + 1,
+                max_depth,
+                scene,
+                light,
+                texture_manager,
+            );
+            final_color = final_color * (1.0 - intersect.material.reflectivity)
                 + reflected_color * intersect.material.reflectivity;
         }
 
-        color
+        final_color
     } else {
-        // === Fondo ===
-        Vector3::new(0.2, 0.3, 0.6) // azul cielo
+        Vector3::new(0.2, 0.3, 0.6) // Color del cielo
     }
 }

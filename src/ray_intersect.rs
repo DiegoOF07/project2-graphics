@@ -1,5 +1,6 @@
+//ray_intersect.rs
 use raylib::prelude::Vector3;
-use crate::material::Material;
+use crate::{material::Material, ray_intersect};
 
 /// Representa el resultado de un rayo al intersectar con un objeto en la escena.
 /// Contiene toda la información necesaria para el shading.

@@ -30,18 +30,18 @@ impl Framebuffer {
         }
     }
 
-    fn ensure_texture(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
+    fn ensure_texture(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
         if self.texture.is_none() {
             let img = Image::gen_image_color(self.width as i32, self.height as i32, Color::BLACK);
             self.texture = Some(
-                rl.load_texture_from_image(thread, &img)
+                d.load_texture_from_image(thread, &img)
                     .expect("No se pudo crear textura"),
             );
         }
     }
 
-    pub fn present(&mut self, rl: &mut RaylibHandle, thread: &RaylibThread) {
-        self.ensure_texture(rl, thread);
+    pub fn present(&mut self, d: &mut RaylibDrawHandle, thread: &RaylibThread) {
+        self.ensure_texture(d, thread);
 
         if let Some(ref mut texture) = self.texture {
             unsafe {
@@ -52,8 +52,6 @@ impl Framebuffer {
                 raylib::ffi::UpdateTexture(*texture.as_ref(), raw.as_ptr() as *const _);
             }
 
-            let mut d = rl.begin_drawing(thread);
-            d.clear_background(Color::BLACK);
             d.draw_texture(texture, 0, 0, Color::WHITE);
         }
     }
