@@ -1,420 +1,294 @@
+// === Imports ===
+use std::sync::Arc;
+use std::thread;
+
 use raylib::prelude::*;
-use crate::material::Material;
-use crate::framebuffer::{Framebuffer, color_to_u32};
-use crate::light::Light;
-use crate::snell::trace_ray;
-use crate::material::vector3_to_color;
+
 use crate::block::Block;
+use crate::framebuffer::{color_to_u32, Framebuffer};
+use crate::light::Light;
+use crate::material::{vector3_to_color};
+use crate::snell::trace_ray;
 use crate::textures::TextureManager;
+use crate::events::handle_camera_input;
+use crate::scene::{create_optimized_scene, load_minecraft_textures};
 
 mod block;
-mod material;
-mod ray_intersect;
+mod camera;
 mod framebuffer;
 mod light;
+mod material;
+mod ray_intersect;
 mod snell;
 mod textures;
-mod camera;
+mod events;
+mod scene;
+
+// === Constantes globales ===
+const SCREEN_WIDTH: i32 = 400;
+const SCREEN_HEIGHT: i32 = 300;
+const RENDER_SCALE: i32 = 2;
 
 fn main() {
-    let screen_width = 800;
-    let screen_height = 600;
-
+    // Inicialización de ventana y Raylib
     let (mut rl, thread) = raylib::init()
-        .size(screen_width, screen_height)
-        .title("Minecraft Raytracer - Bloques con Texturas")
+        .size(SCREEN_WIDTH * RENDER_SCALE, SCREEN_HEIGHT * RENDER_SCALE)
+        .title("Minecraft Raytracer - Multihilo")
         .build();
-
     rl.set_target_fps(60);
 
-    let mut framebuffer = Framebuffer::new(screen_width as u32, screen_height as u32);
+    // Framebuffer y texturas
+    let mut framebuffer = Framebuffer::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32);
     let mut texture_manager = TextureManager::new();
+    load_minecraft_textures(&mut rl, &thread, &mut texture_manager);
 
-    // Cargar todas las texturas necesarias
-    load_minecraft_textures(&mut texture_manager, &mut rl, &thread);
-
-    // Configuración de cámara inicial
-    let mut camera_pos = Vector3::new(0.0, 3.0, -8.0);
-    let mut camera_yaw = std::f32::consts::FRAC_PI_2; // Mirar hacia el centro
-    let mut camera_pitch = -0.3_f32; // Mirar ligeramente hacia abajo
+    // Cámara
+    let mut camera_pos = Vector3::new(0.0, 2.0, -6.0);
+    let mut camera_yaw = 0.0_f32;
+    let mut camera_pitch = -0.2_f32;
     let fov: f32 = std::f32::consts::FRAC_PI_3;
-    let aspect_ratio = screen_width as f32 / screen_height as f32;
+    let aspect_ratio = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
 
-    // Crear escena tipo diorama de Minecraft
-    let scene = create_minecraft_diorama();
+    // Escena y recursos compartidos
+    let scene = Arc::new(create_optimized_scene());
+    let light = Arc::new(Light::new(
+        Vector3::new(5.0, 8.0, -5.0),
+        Vector3::new(1.0, 0.95, 0.8),
+        1.5,
+    ));
+    let texture_manager = Arc::new(texture_manager);
 
-    // Configurar múltiples luces para mejor iluminación
-    let lights = vec![
-        Light::new(
-            Vector3::new(8.0, 10.0, -8.0),  // Luz principal (sol)
-            Vector3::new(1.0, 0.95, 0.8),   // Ligeramente cálida
-            1.2,
-        ),
-        Light::new(
-            Vector3::new(-5.0, 6.0, 5.0),   // Luz secundaria
-            Vector3::new(0.7, 0.8, 1.0),    // Ligeramente azulada
-            0.6,
-        ),
-    ];
-
+    // Información al usuario
     println!("Controles:");
-    println!("WASD - Mover cámara");
-    println!("Flechas - Rotar cámara");
-    println!("Espacio/Ctrl - Subir/Bajar");
-    println!("ESC - Salir");
+    println!("WASD - Mover | Flechas - Rotar | Espacio/CTRL - Subir/Bajar | T - Toggle multihilo | ESC - Salir");
+    println!(
+        "Resolución: {}x{} (escalado {}x)",
+        SCREEN_WIDTH, SCREEN_HEIGHT, RENDER_SCALE
+    );
 
+    // Variables de estado
+    let mut use_multithreading = true;
+    let mut frame_count = 0;
+    let mut last_fps_update = std::time::Instant::now();
+
+    // === Loop principal ===
     while !rl.window_should_close() {
-        // Controles de cámara mejorados
+        // Movimiento de cámara
         handle_camera_input(&rl, &mut camera_pos, &mut camera_yaw, &mut camera_pitch);
 
-        // Limpiar framebuffer con color del cielo
-        framebuffer.clear(color_to_u32(Color::new(135, 206, 235, 255))); // Sky blue
-
-        // Calcular vectores de la cámara
-        let forward = Vector3::new(
-            camera_yaw.cos() * camera_pitch.cos(),
-            camera_pitch.sin(),
-            camera_yaw.sin() * camera_pitch.cos(),
-        ).normalized();
-        let right = forward.cross(Vector3::new(0.0, 1.0, 0.0)).normalized();
-        let up = right.cross(forward).normalized();
-
-        // Renderizar cada pixel
-        for y in 0..screen_height {
-            for x in 0..screen_width {
-                let px = (2.0 * ((x as f32 + 0.5) / screen_width as f32) - 1.0)
-                    * (fov / 2.0).tan() * aspect_ratio;
-                let py = (1.0 - 2.0 * ((y as f32 + 0.5) / screen_height as f32))
-                    * (fov / 2.0).tan();
-
-                let ray_dir = (forward + right * px + up * py).normalized();
-                
-                // Usar múltiples luces para iluminación más realista
-                let mut final_color = Vector3::zero();
-                for light in &lights {
-                    let color_contrib = trace_ray(
-                        camera_pos, 
-                        ray_dir, 
-                        0, 
-                        4, // Aumentar profundidad para mejores reflexiones
-                        &scene, 
-                        light, 
-                        &texture_manager
-                    );
-                    final_color = final_color + color_contrib * light.intensity;
-                }
-                
-                // Normalizar el color final
-                final_color = final_color / lights.len() as f32;
-                final_color = Vector3::new(
-                    final_color.x.min(1.0),
-                    final_color.y.min(1.0),
-                    final_color.z.min(1.0),
-                );
-
-                let color = vector3_to_color(final_color);
-                framebuffer.set_pixel(x as u32, y as u32, color_to_u32(color));
-            }
+        // Toggle multihilo
+        if rl.is_key_pressed(KeyboardKey::KEY_T) {
+            use_multithreading = !use_multithreading;
+            println!("Multihilo: {}", if use_multithreading { "ON" } else { "OFF" });
         }
 
-        // Obtener información para mostrar antes de usar rl mutably
-        let fps = rl.get_fps();
-        let pos_text = format!("Pos: ({:.1}, {:.1}, {:.1})", camera_pos.x, camera_pos.y, camera_pos.z);
-        
-        // Presentar el frame y mostrar información
+        framebuffer.clear(color_to_u32(Color::new(135, 206, 250, 255)));
+
+        // Configuración de cámara
+        let camera_config = CameraConfig::new(
+            camera_pos,
+            camera_yaw,
+            camera_pitch,
+            SCREEN_WIDTH as usize,
+            SCREEN_HEIGHT as usize,
+            fov,
+            aspect_ratio,
+        );
+
+        // Render
+        let start_time = std::time::Instant::now();
+        if use_multithreading {
+            render_multithreaded(
+                &mut framebuffer,
+                &camera_config,
+                Arc::clone(&scene),
+                Arc::clone(&light),
+                Arc::clone(&texture_manager),
+            );
+        } else {
+            render_single_threaded(
+                &mut framebuffer,
+                &camera_config,
+                &scene,
+                &light,
+                &texture_manager,
+            );
+        }
+        let render_time = start_time.elapsed();
+
+        // === Dibujar UI ===
+        frame_count += 1;
+        let now = std::time::Instant::now();
+        let fps_text = if now.duration_since(last_fps_update).as_secs() >= 1 {
+            last_fps_update = now;
+            let fps = frame_count;
+            frame_count = 0;
+            format!("FPS: {}", fps)
+        } else {
+            format!("FPS: {}", rl.get_fps())
+        };
+
+        let pos_text =
+            format!("Pos: ({:.1}, {:.1}, {:.1})", camera_pos.x, camera_pos.y, camera_pos.z);
+        let mode_text = format!(
+            "Modo: {}",
+            if use_multithreading { "Multi-hilo" } else { "Single-hilo" }
+        );
+        let render_time_text = format!("Render: {:.1}ms", render_time.as_millis());
+
         {
             let mut d = rl.begin_drawing(&thread);
             d.clear_background(Color::BLACK);
-            framebuffer.present(&mut d, &thread);
-            d.draw_text(&format!("FPS: {}", fps), 10, 10, 20, Color::WHITE);
+
+            let source = Rectangle::new(0.0, 0.0, SCREEN_WIDTH as f32, SCREEN_HEIGHT as f32);
+            let dest = Rectangle::new(
+                0.0,
+                0.0,
+                (SCREEN_WIDTH * RENDER_SCALE) as f32,
+                (SCREEN_HEIGHT * RENDER_SCALE) as f32,
+            );
+            framebuffer.present_scaled(&mut d, &thread, source, dest);
+
+            d.draw_text(&fps_text, 10, 10, 20, Color::WHITE);
             d.draw_text(&pos_text, 10, 35, 16, Color::WHITE);
+            d.draw_text(&mode_text, 10, 60, 16, Color::WHITE);
+            d.draw_text(&render_time_text, 10, 85, 16, Color::WHITE);
+            d.draw_text(&format!("Bloques: {}", scene.len()), 10, 110, 16, Color::WHITE);
+            d.draw_text("T - Toggle multihilo", 10, 135, 14, Color::LIGHTGRAY);
         }
     }
 }
 
-fn load_minecraft_textures(texture_manager: &mut TextureManager, rl: &mut RaylibHandle, thread: &RaylibThread) {
-    println!("Cargando texturas...");
-    
-    // Lista de texturas a cargar (puedes crear estas imágenes o descargar texturas de Minecraft)
-    let textures = [
-        "textures/grass_top.jpg",
-        "textures/grass_side.jpg", 
-        "textures/dirt.jpg",
-        "textures/stone.jpg",
-        "textures/cobble.png",
-        "textures/wood_oak.jpg",
-        "textures/wood_oak_log.jpg",
-        "textures/leaves_oak.jpg",
-        "assets/textures/sand.png",
-        "assets/textures/water.png",
-        "assets/textures/glass.png",
-        "assets/textures/brick.png",
-    ];
-
-    for texture_path in &textures {
-        match texture_manager.load_texture(rl, thread, texture_path) {
-            Ok(_) => println!("Cargada: {}", texture_path),
-            Err(e) => println!("Error cargando {}: {}", texture_path, e),
+// === Render single-thread ===
+fn render_single_threaded(
+    framebuffer: &mut Framebuffer,
+    camera_config: &CameraConfig,
+    scene: &[Block],
+    light: &Light,
+    texture_manager: &TextureManager,
+) {
+    for y in 0..camera_config.height {
+        for x in 0..camera_config.width {
+            let ray_dir = camera_config.get_ray_direction(x, y);
+            let color_vec =
+                trace_ray(camera_config.pos, ray_dir, 0, 2, scene, light, texture_manager);
+            let color = vector3_to_color(color_vec);
+            framebuffer.set_pixel(x as u32, y as u32, color_to_u32(color));
         }
     }
-    
-    println!("Texturas cargadas!");
 }
 
-fn create_minecraft_diorama() -> Vec<Block> {
-    let mut blocks = Vec::new();
-    
-    // === SUELO BASE DE TIERRA ===
-    for x in -6..=6 {
-        for z in -6..=6 {
-            let dirt_material = Material::new(
-                Vector3::new(0.4, 0.3, 0.2), // Color marrón tierra
-                [0.8, 0.1],
-                5.0,
-                0.0,
-                0.0,
-                1.0,
-                Some("textures/dirt.jpg".to_string()),
-                None,
-            );
-            
-            blocks.push(Block::new(
-                Vector3::new(x as f32, -2.0, z as f32),
-                1.0,
-                dirt_material,
-            ));
+// === Render multi-thread ===
+fn render_multithreaded(
+    framebuffer: &mut Framebuffer,
+    camera_config: &CameraConfig,
+    scene: Arc<Vec<Block>>,
+    light: Arc<Light>,
+    texture_manager: Arc<TextureManager>,
+) {
+    let num_threads = thread::available_parallelism().unwrap().get();
+    let tile_size = 16usize;
+
+    // Crear tiles
+    let mut tiles = Vec::new();
+    for ty in (0..camera_config.height).step_by(tile_size) {
+        for tx in (0..camera_config.width).step_by(tile_size) {
+            let x2 = (tx + tile_size).min(camera_config.width);
+            let y2 = (ty + tile_size).min(camera_config.height);
+            tiles.push((tx, ty, x2, y2));
         }
     }
 
-    // === CAPA DE CÉSPED ===
-    for x in -5..=5 {
-        for z in -5..=5 {
-            let grass_material = Material::new(
-                Vector3::new(0.3, 0.8, 0.2), // Verde césped
-                [0.9, 0.1],
-                8.0,
-                0.0,
-                0.0,
-                1.0,
-                Some("textures/grass_top.jpg".to_string()),
-                None,
-            );
-            
-            blocks.push(Block::new(
-                Vector3::new(x as f32, -1.0, z as f32),
-                1.0,
-                grass_material,
-            ));
-        }
-    }
+    // Distribuir tiles entre hilos
+    let tiles_per_thread = (tiles.len() + num_threads - 1) / num_threads;
+    let mut handles = Vec::new();
+    let tiles_arc = Arc::new(tiles);
 
-    // === CASA SIMPLE ===
-    // Paredes de piedra
-    let stone_material = Material::new(
-        Vector3::new(0.6, 0.6, 0.6),
-        [0.7, 0.3],
-        20.0,
-        0.1,
-        0.0,
-        1.0,
-        Some("textures/cobble.png".to_string()),
-        None,
-    );
+    for i in 0..num_threads {
+        let scene = Arc::clone(&scene);
+        let light = Arc::clone(&light);
+        let texture_manager = Arc::clone(&texture_manager);
+        let camera = camera_config.clone();
+        let tiles_ref = Arc::clone(&tiles_arc);
 
-    // Pared frontal
-    for x in -1..=1 {
-        for y in 0..=2 {
-            if !(x == 0 && y == 0) { // Dejar espacio para la puerta
-                blocks.push(Block::new(
-                    Vector3::new(x as f32, y as f32, 2.0),
-                    1.0,
-                    stone_material.clone(),
-                ));
-            }
-        }
-    }
+        let start = i * tiles_per_thread;
+        let end = ((i + 1) * tiles_per_thread).min(tiles_ref.len());
 
-    // Paredes laterales
-    for z in 0..=2 {
-        for y in 0..=2 {
-            blocks.push(Block::new(Vector3::new(-1.0, y as f32, z as f32), 1.0, stone_material.clone()));
-            blocks.push(Block::new(Vector3::new(1.0, y as f32, z as f32), 1.0, stone_material.clone()));
-        }
-    }
-
-    // Pared trasera
-    for x in -1..=1 {
-        for y in 0..=2 {
-            blocks.push(Block::new(
-                Vector3::new(x as f32, y as f32, 0.0),
-                1.0,
-                stone_material.clone(),
-            ));
-        }
-    }
-
-    // === TECHO DE MADERA ===
-    let wood_material = Material::new(
-        Vector3::new(0.8, 0.5, 0.2),
-        [0.8, 0.2],
-        10.0,
-        0.0,
-        0.0,
-        1.0,
-        Some("textures/wood_oak_log.jpg".to_string()),
-        None,
-    );
-
-    for x in -1..=1 {
-        for z in 0..=2 {
-            blocks.push(Block::new(
-                Vector3::new(x as f32, 3.0, z as f32),
-                1.0,
-                wood_material.clone(),
-            ));
-        }
-    }
-
-    // === ÁRBOL ===
-    // Tronco
-    let log_material = Material::new(
-        Vector3::new(0.4, 0.3, 0.1),
-        [0.8, 0.2],
-        5.0,
-        0.0,
-        0.0,
-        1.0,
-        Some("textures/wood_oak.jpg".to_string()),
-        None,
-    );
-
-    for y in 0..=4 {
-        blocks.push(Block::new(
-            Vector3::new(4.0, y as f32, -2.0),
-            1.0,
-            log_material.clone(),
-        ));
-    }
-
-    // Hojas
-    let leaves_material = Material::new(
-        Vector3::new(0.2, 0.6, 0.2),
-        [0.9, 0.1],
-        5.0,
-        0.0,
-        0.0,
-        1.0,
-        Some("textures/leaves_oak.jpg".to_string()),
-        None,
-    );
-
-    // Copa del árbol
-    for x in 3..=5 {
-        for y in 4..=6 {
-            for z in -3..=-1 {
-                // Crear forma más orgánica del árbol
-                let distance_from_center = ((x - 4) * (x - 4) + (z + 2) * (z + 2)) as f32;
-                if distance_from_center <= 2.0 || (y == 4 && distance_from_center <= 4.0) {
-                    blocks.push(Block::new(
-                        Vector3::new(x as f32, y as f32, z as f32),
-                        1.0,
-                        leaves_material.clone(),
-                    ));
+        let handle = thread::spawn(move || {
+            let mut local_pixels = Vec::new();
+            for &(x1, y1, x2, y2) in &tiles_ref[start..end] {
+                for y in y1..y2 {
+                    for x in x1..x2 {
+                        let ray_dir = camera.get_ray_direction(x, y);
+                        let color_vec =
+                            trace_ray(camera.pos, ray_dir, 0, 2, &scene, &light, &texture_manager);
+                        let color_u32 = color_to_u32(vector3_to_color(color_vec));
+                        local_pixels.push((x, y, color_u32));
+                    }
                 }
             }
+            local_pixels
+        });
+        handles.push(handle);
+    }
+
+    // Recoger resultados
+    for handle in handles {
+        if let Ok(local_pixels) = handle.join() {
+            for (x, y, c) in local_pixels {
+                framebuffer.set_pixel(x as u32, y as u32, c);
+            }
         }
     }
-
-    // === PEQUEÑO LAGO ===
-    let water_material = Material::new(
-        Vector3::new(0.1, 0.3, 0.8),
-        [0.2, 0.8],
-        100.0,
-        0.7, // Muy reflectante
-        0.3, // Ligeramente transparente
-        1.33, // Índice de refracción del agua
-        Some("textures/water.png".to_string()),
-        None,
-    );
-
-    for x in -4..=-2 {
-        for z in 3..=5 {
-            blocks.push(Block::new(
-                Vector3::new(x as f32, -1.5, z as f32),
-                1.0,
-                water_material.clone(),
-            ));
-        }
-    }
-
-    // === ALGUNOS BLOQUES DECORATIVOS ===
-    // Bloque de vidrio brillante
-    let glass_material = Material::new(
-        Vector3::new(0.9, 0.9, 0.9),
-        [0.1, 0.9],
-        200.0,
-        0.1,
-        0.8, // Muy transparente
-        1.5, // Índice de refracción del vidrio
-        Some("textures/glass.png".to_string()),
-        None,
-    );
-
-    blocks.push(Block::new(
-        Vector3::new(-4.0, 0.0, -4.0),
-        1.0,
-        glass_material,
-    ));
-
-    // Torre de ladrillos
-    let brick_material = Material::new(
-        Vector3::new(0.7, 0.3, 0.2),
-        [0.8, 0.2],
-        15.0,
-        0.0,
-        0.0,
-        1.0,
-        Some("textures/brick.png".to_string()),
-        None,
-    );
-
-    for y in 0..=3 {
-        blocks.push(Block::new(
-            Vector3::new(5.0, y as f32, 4.0),
-            1.0,
-            brick_material.clone(),
-        ));
-    }
-
-    blocks
 }
 
-fn handle_camera_input(rl: &RaylibHandle, camera_pos: &mut Vector3, camera_yaw: &mut f32, camera_pitch: &mut f32) {
-    // Rotación de cámara
-    let rotation_speed = if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) { 0.03 } else { 0.015 };
-    
-    if rl.is_key_down(KeyboardKey::KEY_LEFT) { *camera_yaw -= rotation_speed; }
-    if rl.is_key_down(KeyboardKey::KEY_RIGHT) { *camera_yaw += rotation_speed; }
-    if rl.is_key_down(KeyboardKey::KEY_UP) { *camera_pitch += rotation_speed; }
-    if rl.is_key_down(KeyboardKey::KEY_DOWN) { *camera_pitch -= rotation_speed; }
-    
-    *camera_pitch = camera_pitch.clamp(-1.4, 1.4); // Limitar pitch
+// === Cámara ===
+#[derive(Clone)]
+struct CameraConfig {
+    pos: Vector3,
+    forward: Vector3,
+    right: Vector3,
+    up: Vector3,
+    width: usize,
+    height: usize,
+    fov_tan: f32,
+    aspect_ratio: f32,
+}
 
-    // Movimiento de cámara
-    let forward = Vector3::new(
-        camera_yaw.cos() * camera_pitch.cos(),
-        camera_pitch.sin(),
-        camera_yaw.sin() * camera_pitch.cos(),
-    ).normalized();
-    let right = forward.cross(Vector3::new(0.0, 1.0, 0.0)).normalized();
-    let up = Vector3::new(0.0, 1.0, 0.0);
+impl CameraConfig {
+    fn new(
+        pos: Vector3,
+        yaw: f32,
+        pitch: f32,
+        width: usize,
+        height: usize,
+        fov: f32,
+        aspect_ratio: f32,
+    ) -> Self {
+        let forward = Vector3::new(
+            yaw.cos() * pitch.cos(),
+            pitch.sin(),
+            yaw.sin() * pitch.cos(),
+        )
+        .normalized();
+        let right = forward.cross(Vector3::new(0.0, 1.0, 0.0)).normalized();
+        let up = right.cross(forward).normalized();
+        Self {
+            pos,
+            forward,
+            right,
+            up,
+            width,
+            height,
+            fov_tan: (fov / 2.0).tan(),
+            aspect_ratio,
+        }
+    }
 
-    let speed = if rl.is_key_down(KeyboardKey::KEY_LEFT_SHIFT) { 0.2 } else { 0.08 };
-    
-    if rl.is_key_down(KeyboardKey::KEY_W) { *camera_pos += forward * speed; }
-    if rl.is_key_down(KeyboardKey::KEY_S) { *camera_pos -= forward * speed; }
-    if rl.is_key_down(KeyboardKey::KEY_A) { *camera_pos -= right * speed; }
-    if rl.is_key_down(KeyboardKey::KEY_D) { *camera_pos += right * speed; }
-    if rl.is_key_down(KeyboardKey::KEY_SPACE) { *camera_pos += up * speed; }
-    if rl.is_key_down(KeyboardKey::KEY_LEFT_CONTROL) { *camera_pos -= up * speed; }
+    #[inline]
+    fn get_ray_direction(&self, x: usize, y: usize) -> Vector3 {
+        let px = (2.0 * ((x as f32 + 0.5) / self.width as f32) - 1.0) * self.fov_tan * self.aspect_ratio;
+        let py = (1.0 - 2.0 * ((y as f32 + 0.5) / self.height as f32)) * self.fov_tan;
+        (self.forward + self.right * px + self.up * py).normalized()
+    }
 }

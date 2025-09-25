@@ -55,6 +55,28 @@ impl Framebuffer {
             d.draw_texture(texture, 0, 0, Color::WHITE);
         }
     }
+
+    pub fn present_scaled(
+        &mut self, 
+        d: &mut RaylibDrawHandle, 
+        thread: &RaylibThread, 
+        source: Rectangle, 
+        dest: Rectangle
+    ) {
+        self.ensure_texture(d, thread);
+
+        if let Some(ref mut texture) = self.texture {
+            unsafe {
+                let raw = std::slice::from_raw_parts(
+                    self.buffer.as_ptr() as *const u8,
+                    self.buffer.len() * 4,
+                );
+                raylib::ffi::UpdateTexture(*texture.as_ref(), raw.as_ptr() as *const _);
+            }
+
+            d.draw_texture_pro(texture, source, dest, Vector2::zero(), 0.0, Color::WHITE);
+        }
+    }
 }
 
 #[inline]

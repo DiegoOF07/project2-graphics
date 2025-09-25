@@ -130,7 +130,31 @@ impl TextureManager {
     pub fn get_gpu_texture(&self, path: &str) -> Option<&Texture2D> {
         self.gpu_textures.get(path)
     }
+
+    /// Obtiene un pixel exacto de la textura en coordenadas (x,y)
+    /// Devuelve blanco si no existe
+    pub fn get_pixel_color(&self, path: &str, x: i32, y: i32) -> Vector3 {
+        if let Some(tex) = self.cpu_textures.get(path) {
+            tex.get_pixel_clamped(x, y)
+        } else {
+            Vector3::one() // fallback blanco
+        }
+    }
+
+    /// devuelve (width,height) o (0,0) si no existe
+    pub fn size_of(&self, path: &str) -> Option<(u32,u32)> {
+        self.cpu_textures.get(path).map(|t| (t.width as u32, t.height as u32))
+    }
+
+    pub fn width_of(&self, path: &str) -> u32 {
+        self.cpu_textures.get(path).map(|t| t.width as u32).unwrap_or(0)
+    }
+
+    pub fn height_of(&self, path: &str) -> u32 {
+        self.cpu_textures.get(path).map(|t| t.height as u32).unwrap_or(0)
+    }
 }
+
 
 impl Default for TextureManager {
     fn default() -> Self {
