@@ -1,7 +1,7 @@
 // scene.rs
 use raylib::prelude::*;
 use crate::block::Block;
-use crate::material::Material;
+use crate::block_types::BlockType;
 use crate::textures::TextureManager;
 
 /// Carga las texturas que vamos a usar en los bloques estilo Minecraft
@@ -18,6 +18,8 @@ pub fn load_minecraft_textures(
         "textures/wood_oak.jpg",
         "textures/wood_oak_log.jpg",
         "textures/leaves_oak.jpg",
+        "textures/deepslate_bricks.jpg",
+        "textures/glass.png"
     ];
 
     for path in textures {
@@ -27,174 +29,49 @@ pub fn load_minecraft_textures(
     Ok(())
 }
 
-/// Crea una escena tipo pueblo pequeño con ~32 bloques variados
+/// Crea una escena sencilla usando los tipos de bloques predefinidos
 pub fn create_optimized_scene() -> Vec<Block> {
     let mut blocks = Vec::new();
 
-    // === SUELO BASE (9 bloques) ===
-    // Crear un suelo de 3x3 con césped
+    // Suelo de 3x3 césped
     for x in -1..=1 {
         for z in -1..=1 {
-            blocks.push(Block::new(
-                Vector3::new(x as f32, -1.0, z as f32),
-                1.0,
-                Material {
-                    diffuse: Vector3::new(0.4, 0.8, 0.3),
-                    albedo: [0.9, 0.1],
-                    specular: 5.0,
-                    reflectivity: 0.0,
-                    transparency: 0.0,
-                    refractive_index: 1.0,
-                    texture: Some("textures/grass_top.jpg".to_string()),
-                    normal_map_id: None,
-                },
-            ));
+            blocks.push(BlockType::Grass.to_block(Vector3::new(x as f32, -1.0, z as f32), 1.0));
         }
     }
 
-    // === CASA PRINCIPAL (8 bloques) ===
-    // Estructura básica de casa con paredes y techo
-    let stone_material = Material {
-        diffuse: Vector3::new(0.6, 0.6, 0.6),
-        albedo: [0.8, 0.2],
-        specular: 15.0,
-        reflectivity: 0.1,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/cobble.png".to_string()),
-        normal_map_id: None,
-    };
+    // Casa con paredes de cobble y techo de madera
+    blocks.push(BlockType::Cobble.to_block(Vector3::new(-1.0, 0.0, -1.0), 1.0));
+    blocks.push(BlockType::Cobble.to_block(Vector3::new(1.0, 0.0, -1.0), 1.0));
+    blocks.push(BlockType::Cobble.to_block(Vector3::new(-1.0, 0.0, 1.0), 1.0));
+    blocks.push(BlockType::Cobble.to_block(Vector3::new(1.0, 0.0, 1.0), 1.0));
 
-    // Paredes (4 bloques)
-    blocks.push(Block::new(Vector3::new(-1.0, 0.0, -1.0), 1.0, stone_material.clone())); // Esquina
-    blocks.push(Block::new(Vector3::new(1.0, 0.0, -1.0), 1.0, stone_material.clone()));  // Esquina
-    blocks.push(Block::new(Vector3::new(-1.0, 0.0, 1.0), 1.0, stone_material.clone()));  // Esquina
-    blocks.push(Block::new(Vector3::new(1.0, 0.0, 1.0), 1.0, stone_material.clone()));   // Esquina
+    blocks.push(BlockType::WoodPlank.to_block(Vector3::new(-1.0, 1.0, -1.0), 1.0));
+    blocks.push(BlockType::WoodPlank.to_block(Vector3::new(1.0, 1.0, -1.0), 1.0));
+    blocks.push(BlockType::WoodPlank.to_block(Vector3::new(-1.0, 1.0, 1.0), 1.0));
+    blocks.push(BlockType::WoodPlank.to_block(Vector3::new(1.0, 1.0, 1.0), 1.0));
 
-    // Techo de madera (4 bloques)
-    let wood_material = Material {
-        diffuse: Vector3::new(0.8, 0.5, 0.2),
-        albedo: [0.8, 0.2],
-        specular: 8.0,
-        reflectivity: 0.0,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/wood_oak.jpg".to_string()),
-        normal_map_id: None,
-    };
+    // Torre de ladrillos deepslate
+    for y in 0..4 {
+        blocks.push(BlockType::DeepslateBricks.to_block(Vector3::new(3.0, y as f32, 0.0), 1.0));
+    }
 
-    blocks.push(Block::new(Vector3::new(-1.0, 1.0, -1.0), 1.0, wood_material.clone()));
-    blocks.push(Block::new(Vector3::new(1.0, 1.0, -1.0), 1.0, wood_material.clone()));
-    blocks.push(Block::new(Vector3::new(-1.0, 1.0, 1.0), 1.0, wood_material.clone()));
-    blocks.push(Block::new(Vector3::new(1.0, 1.0, 1.0), 1.0, wood_material.clone()));
+    // Camino de piedra
+    blocks.push(BlockType::Stone.to_block(Vector3::new(0.0, -0.9, -2.0), 1.0));
+    blocks.push(BlockType::Stone.to_block(Vector3::new(1.0, -0.9, -2.0), 1.0));
+    blocks.push(BlockType::Stone.to_block(Vector3::new(2.0, -0.9, -1.0), 1.0));
 
-    // === TORRE DE OBSERVACIÓN (4 bloques) ===
-    let brick_material = Material {
-        diffuse: Vector3::new(0.7, 0.3, 0.2),
-        albedo: [0.8, 0.2],
-        specular: 12.0,
-        reflectivity: 0.05,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/brick.png".to_string()),
-        normal_map_id: None,
-    };
+    // Jardín
+    blocks.push(BlockType::Dirt.to_block(Vector3::new(-3.0, -1.0, 0.0), 1.0));
+    blocks.push(BlockType::Dirt.to_block(Vector3::new(-3.0, -1.0, 1.0), 1.0));
+    blocks.push(BlockType::Leaves.to_block(Vector3::new(-3.0, 0.0, 0.0), 1.0));
+    blocks.push(BlockType::Leaves.to_block(Vector3::new(-3.0, 0.0, 1.0), 1.0));
+    blocks.push(BlockType::Leaves.to_block(Vector3::new(-3.0, 1.0, 0.0), 1.0));
 
-    blocks.push(Block::new(Vector3::new(3.0, 0.0, 0.0), 1.0, brick_material.clone()));
-    blocks.push(Block::new(Vector3::new(3.0, 1.0, 0.0), 1.0, brick_material.clone()));
-    blocks.push(Block::new(Vector3::new(3.0, 2.0, 0.0), 1.0, brick_material.clone()));
-    blocks.push(Block::new(Vector3::new(3.0, 3.0, 0.0), 1.0, brick_material.clone()));
-
-    // === CAMINO DE PIEDRA (3 bloques) ===
-    let path_material = Material {
-        diffuse: Vector3::new(0.5, 0.5, 0.5),
-        albedo: [0.9, 0.1],
-        specular: 3.0,
-        reflectivity: 0.0,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/stone.jpg".to_string()),
-        normal_map_id: None,
-    };
-
-    blocks.push(Block::new(Vector3::new(0.0, -0.9, -2.0), 1.0, path_material.clone()));
-    blocks.push(Block::new(Vector3::new(1.0, -0.9, -2.0), 1.0, path_material.clone()));
-    blocks.push(Block::new(Vector3::new(2.0, -0.9, -1.0), 1.0, path_material.clone()));
-
-    // === JARDÍN CON DIFERENTES MATERIALES (5 bloques) ===
-    // Bloque de tierra
-    let dirt_material = Material {
-        diffuse: Vector3::new(0.4, 0.3, 0.2),
-        albedo: [0.9, 0.1],
-        specular: 2.0,
-        reflectivity: 0.0,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/dirt.jpg".to_string()),
-        normal_map_id: None,
-    };
-
-    blocks.push(Block::new(Vector3::new(-3.0, -1.0, 0.0), 1.0, dirt_material.clone()));
-    blocks.push(Block::new(Vector3::new(-3.0, -1.0, 1.0), 1.0, dirt_material.clone()));
-
-    // Hojas/Plantas
-    let leaves_material = Material {
-        diffuse: Vector3::new(0.2, 0.6, 0.2),
-        albedo: [0.9, 0.1],
-        specular: 3.0,
-        reflectivity: 0.0,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/leaves_oak.jpg".to_string()),
-        normal_map_id: None,
-    };
-
-    blocks.push(Block::new(Vector3::new(-3.0, 0.0, 0.0), 1.0, leaves_material.clone()));
-    blocks.push(Block::new(Vector3::new(-3.0, 0.0, 1.0), 1.0, leaves_material.clone()));
-    blocks.push(Block::new(Vector3::new(-3.0, 1.0, 0.0), 1.0, leaves_material.clone()));
-
-    // === ELEMENTOS ESPECIALES (3 bloques) ===
-    // Bloque reflectante (tipo espejo/metal)
-    let metal_material = Material {
-        diffuse: Vector3::new(0.8, 0.8, 0.9),
-        albedo: [0.3, 0.7],
-        specular: 100.0,
-        reflectivity: 0.8, // Muy reflectante
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/stone.jpg".to_string()), // Usar stone como base metálica
-        normal_map_id: None,
-    };
-
-    blocks.push(Block::new(Vector3::new(0.0, 2.0, 0.0), 1.0, metal_material));
-
-    // Bloque transparente (tipo cristal)
-    let glass_material = Material {
-        diffuse: Vector3::new(0.9, 0.9, 1.0),
-        albedo: [0.1, 0.9],
-        specular: 200.0,
-        reflectivity: 0.1,
-        transparency: 0.8, // Muy transparente
-        refractive_index: 1.5, // Índice del vidrio
-        texture: Some("textures/glass.png".to_string()),
-        normal_map_id: None,
-    };
-
-    blocks.push(Block::new(Vector3::new(-2.0, 0.0, -2.0), 1.0, glass_material));
-
-    // Bloque decorativo de madera especial
-    let log_material = Material {
-        diffuse: Vector3::new(0.4, 0.3, 0.1),
-        albedo: [0.8, 0.2],
-        specular: 5.0,
-        reflectivity: 0.0,
-        transparency: 0.0,
-        refractive_index: 1.0,
-        texture: Some("textures/wood_oak_log.jpg".to_string()),
-        normal_map_id: None,
-    };
-
-    blocks.push(Block::new(Vector3::new(2.0, 0.0, 2.0), 1.0, log_material));
+    // Elementos especiales
+    blocks.push(BlockType::Metal.to_block(Vector3::new(0.0, 2.0, 0.0), 1.0));
+    blocks.push(BlockType::Glass.to_block(Vector3::new(-2.0, 0.0, -2.0), 1.0));
+    blocks.push(BlockType::WoodLog.to_block(Vector3::new(2.0, 0.0, 2.0), 1.0));
 
     println!("Escena creada con {} bloques", blocks.len());
     blocks

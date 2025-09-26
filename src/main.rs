@@ -8,10 +8,11 @@ use crate::block::Block;
 use crate::framebuffer::{color_to_u32, Framebuffer};
 use crate::light::Light;
 use crate::material::{vector3_to_color};
-use crate::snell::trace_ray;
+use crate::snell::trace_ray_multi_light;
 use crate::textures::TextureManager;
 use crate::events::handle_camera_input;
 use crate::scene::{create_optimized_scene, load_minecraft_textures};
+
 
 mod block;
 mod camera;
@@ -23,6 +24,7 @@ mod snell;
 mod textures;
 mod events;
 mod scene;
+mod block_types;
 
 // === Constantes globales ===
 const SCREEN_WIDTH: i32 = 400;
@@ -33,7 +35,7 @@ fn main() {
     // Inicialización de ventana y Raylib
     let (mut rl, thread) = raylib::init()
         .size(SCREEN_WIDTH * RENDER_SCALE, SCREEN_HEIGHT * RENDER_SCALE)
-        .title("Minecraft Raytracer - Multihilo")
+        .title("Minecraft Raytracer")
         .build();
     rl.set_target_fps(60);
 
@@ -51,11 +53,23 @@ fn main() {
 
     // Escena y recursos compartidos
     let scene = Arc::new(create_optimized_scene());
-    let light = Arc::new(Light::new(
-        Vector3::new(5.0, 8.0, -5.0),
-        Vector3::new(1.0, 0.95, 0.8),
-        1.5,
-    ));
+    let lights = Arc::new(vec![
+        Light::new(
+            Vector3::new(5.0, 8.0, -5.0),   // Luz principal (sol)
+            Vector3::new(1.0, 0.95, 0.8),   // Cálida
+            2.2,
+        ),
+        Light::new(
+            Vector3::new(-5.0, 6.0, 5.0),   // Luz secundaria
+            Vector3::new(0.6, 0.7, 1.0),    // Fría/azulada
+            0.8,
+        ),
+        Light::new(
+            Vector3::new(0.0, 6.0, 0.0),    // Luz cenital
+            Vector3::new(1.0, 1.0, 0.9),    // Blanca suave
+            0.6,
+        ),
+    ]);
     let texture_manager = Arc::new(texture_manager);
 
     // Información al usuario
@@ -102,7 +116,7 @@ fn main() {
                 &mut framebuffer,
                 &camera_config,
                 Arc::clone(&scene),
-                Arc::clone(&light),
+                Arc::clone(&lights),
                 Arc::clone(&texture_manager),
             );
         } else {
@@ -110,7 +124,7 @@ fn main() {
                 &mut framebuffer,
                 &camera_config,
                 &scene,
-                &light,
+                &lights,
                 &texture_manager,
             );
         }
@@ -159,31 +173,39 @@ fn main() {
     }
 }
 
-// === Render single-thread ===
+// === Render single thread ===
 fn render_single_threaded(
     framebuffer: &mut Framebuffer,
     camera_config: &CameraConfig,
     scene: &[Block],
-    light: &Light,
+    lights: &[Light], // Cambio: vector de luces
     texture_manager: &TextureManager,
 ) {
     for y in 0..camera_config.height {
         for x in 0..camera_config.width {
             let ray_dir = camera_config.get_ray_direction(x, y);
-            let color_vec =
-                trace_ray(camera_config.pos, ray_dir, 0, 2, scene, light, texture_manager);
+            
+            let color_vec = trace_ray_multi_light(
+                camera_config.pos, 
+                ray_dir, 
+                0, 2, 
+                scene, 
+                lights, // Pasar vector de luces
+                texture_manager
+            );
+
             let color = vector3_to_color(color_vec);
             framebuffer.set_pixel(x as u32, y as u32, color_to_u32(color));
         }
     }
 }
 
-// === Render multi-thread ===
+// === Render multi-thread con múltiples luces ===
 fn render_multithreaded(
     framebuffer: &mut Framebuffer,
     camera_config: &CameraConfig,
     scene: Arc<Vec<Block>>,
-    light: Arc<Light>,
+    lights: Arc<Vec<Light>>, // Cambio: vector de luces
     texture_manager: Arc<TextureManager>,
 ) {
     let num_threads = thread::available_parallelism().unwrap().get();
@@ -206,7 +228,7 @@ fn render_multithreaded(
 
     for i in 0..num_threads {
         let scene = Arc::clone(&scene);
-        let light = Arc::clone(&light);
+        let lights = Arc::clone(&lights); // Cambio: clonar vector de luces
         let texture_manager = Arc::clone(&texture_manager);
         let camera = camera_config.clone();
         let tiles_ref = Arc::clone(&tiles_arc);
@@ -220,8 +242,18 @@ fn render_multithreaded(
                 for y in y1..y2 {
                     for x in x1..x2 {
                         let ray_dir = camera.get_ray_direction(x, y);
-                        let color_vec =
-                            trace_ray(camera.pos, ray_dir, 0, 2, &scene, &light, &texture_manager);
+                        
+                        // Cambio: calcular iluminación con múltiples luces
+                        let color_vec = trace_ray_multi_light(
+                            camera.pos, 
+                            ray_dir, 
+                            0, 
+                            2, 
+                            &scene, 
+                            &lights, // Pasar vector de luces
+                            &texture_manager
+                        );
+                        
                         let color_u32 = color_to_u32(vector3_to_color(color_vec));
                         local_pixels.push((x, y, color_u32));
                     }
