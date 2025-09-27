@@ -1,4 +1,4 @@
-// snell.rs - Módulo de raytracing
+// snell.rs - Módulo de raytracing optimizado y reorganizado
 use raylib::prelude::*;
 use crate::block::Block;
 use crate::light::Light;
@@ -144,7 +144,7 @@ fn sky_color(dir: &Vector3) -> Vector3 {
 
 // === FUNCIONES PRINCIPALES DE RAYTRACING ===
 
-/// Raytracer principal con múltiples luces y optimizaciones
+/// Raytracer principal con múltiples luces, reflexiones y transparencia
 pub fn trace_ray_multi_light(
     origin: Vector3,
     dir: Vector3,
@@ -162,6 +162,12 @@ pub fn trace_ray_multi_light(
     // Buscar intersección más cercana
     let intersect = match find_closest_intersection(&origin, &dir, scene) {
         Some(hit) => hit,
+        None => return sky_color(&dir),
+    };
+
+    // Verificar que el material existe
+    let material = match intersect.material {
+        Some(mat) => mat,
         None => return sky_color(&dir),
     };
 
@@ -186,30 +192,78 @@ pub fn trace_ray_multi_light(
         final_color = final_color / lights.len() as f32;
     }
 
-    // Añadir color ambiente mínimo para evitar sombras completamente negras
+    // Añadir color ambiente mínimo
     let ambient = base_color * 0.1;
     final_color = final_color + ambient;
 
-    // Calcular reflexiones solo si son significativas
-    if let Some(material) = intersect.material {
-        if material.reflectivity > MIN_REFLECTION_THRESHOLD && depth < max_depth {
-            let reflected_dir = reflect(&dir, &intersect.normal).normalized();
-            let reflection_origin = intersect.point + intersect.normal * EPSILON;
+    // === MANEJO DE REFLEXIONES Y REFRACCIONES ===
+    
+    let mut reflection_color = Vector3::zero();
+    let mut refraction_color = Vector3::zero();
+    let mut fresnel_factor = 0.0;
+
+    // Calcular reflexiones si son significativas
+    if material.reflectivity > MIN_REFLECTION_THRESHOLD && depth < max_depth {
+        let reflected_dir = reflect(&dir, &intersect.normal).normalized();
+        let reflection_origin = intersect.point + intersect.normal * EPSILON;
+        
+        reflection_color = trace_ray_multi_light(
+            reflection_origin,
+            reflected_dir,
+            depth + 1,
+            max_depth,
+            scene,
+            lights,
+            texture_manager,
+        );
+    }
+
+    // Calcular refracciones si el material es transparente
+    if material.transparency > 0.05 && depth < max_depth {
+        let refracted_dir = refract(&dir, &intersect.normal, material.refractive_index);
+        
+        // Solo proceder si hay refracción válida (no reflexión interna total)
+        if refracted_dir.dot(refracted_dir) > 0.01 {
+            // Mover el origen ligeramente hacia el interior del objeto
+            let refraction_origin = intersect.point - intersect.normal * EPSILON;
             
-            let reflected_color = trace_ray_multi_light(
-                reflection_origin,
-                reflected_dir,
+            refraction_color = trace_ray_multi_light(
+                refraction_origin,
+                refracted_dir,
                 depth + 1,
                 max_depth,
                 scene,
                 lights,
                 texture_manager,
             );
-            
-            // Mezclar color directo con reflexión
-            let reflectivity = material.reflectivity;
-            final_color = final_color * (1.0 - reflectivity) + reflected_color * reflectivity;
+
+            // Calcular factor de Fresnel para materiales transparentes
+            let cos_i = (-dir.dot(intersect.normal)).abs();
+            fresnel_factor = calculate_fresnel(cos_i, material.refractive_index);
         }
+    }
+
+    // Combinar colores según las propiedades del material
+    if material.transparency > 0.05 {
+        // Material transparente: combinar reflexión, refracción y color directo
+        let transparency = material.transparency;
+        let reflectivity = material.reflectivity.max(fresnel_factor);
+        
+        // El color directo se ve atenuado por la transparencia
+        let direct_contribution = final_color * (1.0 - transparency);
+        
+        // La refracción contribuye según la transparencia
+        let refraction_contribution = refraction_color * transparency * (1.0 - reflectivity);
+        
+        // La reflexión contribuye según el factor de Fresnel y reflectividad
+        let reflection_contribution = reflection_color * reflectivity;
+        
+        final_color = direct_contribution + refraction_contribution + reflection_contribution;
+        
+    } else if material.reflectivity > MIN_REFLECTION_THRESHOLD {
+        // Material solo reflectivo (no transparente)
+        let reflectivity = material.reflectivity;
+        final_color = final_color * (1.0 - reflectivity) + reflection_color * reflectivity;
     }
 
     // Clamp final para evitar valores fuera de rango
@@ -238,28 +292,35 @@ pub fn trace_ray(
 
 // === FUNCIONES DE UTILIDAD ===
 
-/// Calcula la Fresnel reflection coefficient (para materiales transparentes)
-#[allow(dead_code)]
-pub fn fresnel(cos_i: f32, refractive_index: f32) -> f32 {
-    let mut etai = 1.0;
+/// Calcula el coeficiente de reflexión de Fresnel
+fn calculate_fresnel(cos_i: f32, refractive_index: f32) -> f32 {
+    let mut etai = 1.0; // Índice del aire
     let mut etat = refractive_index;
-    let mut cos_i = cos_i;
+    let mut cos_i = cos_i.clamp(0.0, 1.0);
     
-    if cos_i > 0.0 {
-        std::mem::swap(&mut etai, &mut etat);
+    // Determinar si entramos o salimos del material
+    if cos_i > 0.9999 {
+        return 0.04; // Valor aproximado para incidencia normal
     }
     
-    cos_i = cos_i.abs();
-    let eta = etai / etat;
-    let sin_t_sq = eta * eta * (1.0 - cos_i * cos_i);
-    
-    if sin_t_sq >= 1.0 {
-        return 1.0; // Reflexión interna total
+    if refractive_index > 1.0 {
+        // Entrando al material desde el aire
+        let eta = etai / etat;
+        let sin_t_sq = eta * eta * (1.0 - cos_i * cos_i);
+        
+        if sin_t_sq >= 1.0 {
+            return 1.0; // Reflexión interna total
+        }
+        
+        let cos_t = (1.0 - sin_t_sq).sqrt();
+        
+        // Ecuaciones de Fresnel
+        let r_parallel = ((etat * cos_i) - (etai * cos_t)) / ((etat * cos_i) + (etai * cos_t));
+        let r_perpendicular = ((etai * cos_i) - (etat * cos_t)) / ((etai * cos_i) + (etat * cos_t));
+        
+        (r_parallel * r_parallel + r_perpendicular * r_perpendicular) * 0.5
+    } else {
+        // Aproximación simple para materiales con índice < 1 (no físico, pero útil)
+        0.04 + 0.96 * (1.0 - cos_i).powf(5.0) // Aproximación de Schlick
     }
-    
-    let cos_t = (1.0 - sin_t_sq).sqrt();
-    let rs = ((etat * cos_i) - (etai * cos_t)) / ((etat * cos_i) + (etai * cos_t));
-    let rp = ((etai * cos_i) - (etat * cos_t)) / ((etai * cos_i) + (etat * cos_t));
-    
-    (rs * rs + rp * rp) * 0.5
 }

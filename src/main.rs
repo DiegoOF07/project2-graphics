@@ -57,12 +57,12 @@ fn main() {
         Light::new(
             Vector3::new(5.0, 8.0, -5.0),   // Luz principal (sol)
             Vector3::new(1.0, 0.95, 0.8),   // Cálida
-            2.2,
+            2.5,
         ),
         Light::new(
             Vector3::new(-5.0, 6.0, 5.0),   // Luz secundaria
             Vector3::new(0.6, 0.7, 1.0),    // Fría/azulada
-            0.8,
+            0.9,
         ),
         Light::new(
             Vector3::new(0.0, 6.0, 0.0),    // Luz cenital
