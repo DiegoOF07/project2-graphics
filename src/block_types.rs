@@ -1,6 +1,6 @@
-use raylib::prelude::*;
 use crate::block::Block;
 use crate::material::Material;
+use raylib::prelude::*;
 
 /// Enum que define los tipos de bloques disponibles
 #[derive(Clone)]
@@ -15,6 +15,7 @@ pub enum BlockType {
     DeepslateBricks,
     Glass,
     Metal,
+    Sun,
 }
 
 impl BlockType {
@@ -105,20 +106,30 @@ impl BlockType {
                 diffuse: Vector3::new(0.9, 0.9, 1.0),
                 albedo: [0.1, 0.9],
                 specular: 200.0,
-                reflectivity: 0.1,
-                transparency: 0.9,
+                reflectivity: 0.0,
+                transparency: 0.8,
                 refractive_index: 1.0,
                 texture: Some("textures/glass.png".to_string()),
                 normal_map_id: None,
             },
             BlockType::Metal => Material {
-                diffuse: Vector3::new(0.8, 0.8, 0.9),
-                albedo: [0.3, 0.7],
+                diffuse: Vector3::new(0.9, 0.9, 0.95),
+                albedo: [0.1, 0.9],
                 specular: 100.0,
                 reflectivity: 0.8,
                 transparency: 0.0,
                 refractive_index: 1.0,
-                texture: Some("textures/stone.jpg".to_string()), // Base metálica
+                texture: None,
+                normal_map_id: None,
+            },
+            BlockType::Sun => Material {
+                diffuse: Vector3::new(1.0, 1.0, 0.8),
+                albedo: [1.0, 0.0],
+                specular: 0.0,
+                reflectivity: 0.0,
+                transparency: 0.0,
+                refractive_index: 1.0,
+                texture: None,
                 normal_map_id: None,
             },
         }
@@ -126,6 +137,18 @@ impl BlockType {
 
     /// Crea un bloque de este tipo en una posición dada
     pub fn to_block(&self, position: Vector3, size: f32) -> Block {
-        Block::new(position, size, self.material())
+    match self {
+        BlockType::Sun => {
+            Block::new_emissive(
+                position,
+                size,
+                self.material(),
+                Vector3::new(1.0, 0.95, 0.7),
+                5.0, 
+            )
+        }
+        _ => Block::new(position, size, self.material()),
     }
+}
+
 }

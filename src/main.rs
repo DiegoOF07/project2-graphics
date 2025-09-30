@@ -5,28 +5,26 @@ use std::thread;
 use raylib::prelude::*;
 
 use crate::block::Block;
-use crate::framebuffer::{color_to_u32, Framebuffer};
+use crate::events::handle_camera_input;
+use crate::framebuffer::{Framebuffer, color_to_u32};
 use crate::light::Light;
-use crate::material::{vector3_to_color};
+use crate::material::vector3_to_color;
+use crate::scene::{create_optimized_scene, load_minecraft_textures};
 use crate::snell::trace_ray_multi_light;
 use crate::textures::TextureManager;
-use crate::events::handle_camera_input;
-use crate::scene::{create_optimized_scene, load_minecraft_textures};
-
 
 mod block;
+mod block_types;
 mod camera;
+mod events;
 mod framebuffer;
 mod light;
 mod material;
 mod ray_intersect;
+mod scene;
 mod snell;
 mod textures;
-mod events;
-mod scene;
-mod block_types;
 
-// === Constantes globales ===
 const SCREEN_WIDTH: i32 = 400;
 const SCREEN_HEIGHT: i32 = 300;
 const RENDER_SCALE: i32 = 2;
@@ -42,7 +40,7 @@ fn main() {
     // Framebuffer y texturas
     let mut framebuffer = Framebuffer::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32);
     let mut texture_manager = TextureManager::new();
-    load_minecraft_textures(&mut rl, &thread, &mut texture_manager);
+    let _ = load_minecraft_textures(&mut rl, &thread, &mut texture_manager);
 
     // Cámara
     let mut camera_pos = Vector3::new(0.0, 2.0, -6.0);
@@ -53,28 +51,31 @@ fn main() {
 
     // Escena y recursos compartidos
     let scene = Arc::new(create_optimized_scene());
-    let lights = Arc::new(vec![
-        Light::new(
-            Vector3::new(5.0, 8.0, -5.0),   // Luz principal (sol)
-            Vector3::new(1.0, 0.95, 0.8),   // Cálida
-            2.5,
-        ),
-        Light::new(
-            Vector3::new(-5.0, 6.0, 5.0),   // Luz secundaria
-            Vector3::new(0.6, 0.7, 1.0),    // Fría/azulada
-            0.9,
-        ),
-        Light::new(
-            Vector3::new(0.0, 6.0, 0.0),    // Luz cenital
-            Vector3::new(1.0, 1.0, 0.9),    // Blanca suave
-            0.6,
-        ),
-    ]);
+    // recolecta luces de los bloques
+    let mut lights_vec = Vec::new();
+    for block in scene.iter() {
+        if let Some(light) = &block.emission {
+            lights_vec.push(*light);
+        }
+    }
+    lights_vec.push(Light::new(
+        Vector3::new(-5.0, 6.0, 5.0), // Luz secundaria
+        Vector3::new(0.6, 0.7, 1.0),  // Fría/azulada
+        0.9,
+    ));
+    // lights_vec.push(Light::new(
+    //     Vector3::new(0.0, 6.0, 0.0), // Luz cenital
+    //     Vector3::new(1.0, 1.0, 0.9), // Blanca suave
+    //     0.6,
+    // ));
+    let lights = Arc::new(lights_vec);
     let texture_manager = Arc::new(texture_manager);
 
     // Información al usuario
     println!("Controles:");
-    println!("WASD - Mover | Flechas - Rotar | Espacio/CTRL - Subir/Bajar | T - Toggle multihilo | ESC - Salir");
+    println!(
+        "WASD - Mover | Flechas - Rotar | Espacio/CTRL - Subir/Bajar | T - Toggle multihilo | ESC - Salir"
+    );
     println!(
         "Resolución: {}x{} (escalado {}x)",
         SCREEN_WIDTH, SCREEN_HEIGHT, RENDER_SCALE
@@ -93,7 +94,10 @@ fn main() {
         // Toggle multihilo
         if rl.is_key_pressed(KeyboardKey::KEY_T) {
             use_multithreading = !use_multithreading;
-            println!("Multihilo: {}", if use_multithreading { "ON" } else { "OFF" });
+            println!(
+                "Multihilo: {}",
+                if use_multithreading { "ON" } else { "OFF" }
+            );
         }
 
         framebuffer.clear(color_to_u32(Color::new(135, 206, 250, 255)));
@@ -142,11 +146,17 @@ fn main() {
             format!("FPS: {}", rl.get_fps())
         };
 
-        let pos_text =
-            format!("Pos: ({:.1}, {:.1}, {:.1})", camera_pos.x, camera_pos.y, camera_pos.z);
+        let pos_text = format!(
+            "Pos: ({:.1}, {:.1}, {:.1})",
+            camera_pos.x, camera_pos.y, camera_pos.z
+        );
         let mode_text = format!(
             "Modo: {}",
-            if use_multithreading { "Multi-hilo" } else { "Single-hilo" }
+            if use_multithreading {
+                "Multi-hilo"
+            } else {
+                "Single-hilo"
+            }
         );
         let render_time_text = format!("Render: {:.1}ms", render_time.as_millis());
 
@@ -167,7 +177,13 @@ fn main() {
             d.draw_text(&pos_text, 10, 35, 16, Color::WHITE);
             d.draw_text(&mode_text, 10, 60, 16, Color::WHITE);
             d.draw_text(&render_time_text, 10, 85, 16, Color::WHITE);
-            d.draw_text(&format!("Bloques: {}", scene.len()), 10, 110, 16, Color::WHITE);
+            d.draw_text(
+                &format!("Bloques: {}", scene.len()),
+                10,
+                110,
+                16,
+                Color::WHITE,
+            );
             d.draw_text("T - Toggle multihilo", 10, 135, 14, Color::LIGHTGRAY);
         }
     }
@@ -178,20 +194,21 @@ fn render_single_threaded(
     framebuffer: &mut Framebuffer,
     camera_config: &CameraConfig,
     scene: &[Block],
-    lights: &[Light], // Cambio: vector de luces
+    lights: &[Light],
     texture_manager: &TextureManager,
 ) {
     for y in 0..camera_config.height {
         for x in 0..camera_config.width {
             let ray_dir = camera_config.get_ray_direction(x, y);
-            
+
             let color_vec = trace_ray_multi_light(
-                camera_config.pos, 
-                ray_dir, 
-                0, 2, 
-                scene, 
-                lights, // Pasar vector de luces
-                texture_manager
+                camera_config.pos,
+                ray_dir,
+                0,
+                2,
+                scene,
+                lights,
+                texture_manager,
             );
 
             let color = vector3_to_color(color_vec);
@@ -200,12 +217,11 @@ fn render_single_threaded(
     }
 }
 
-// === Render multi-thread con múltiples luces ===
 fn render_multithreaded(
     framebuffer: &mut Framebuffer,
     camera_config: &CameraConfig,
     scene: Arc<Vec<Block>>,
-    lights: Arc<Vec<Light>>, // Cambio: vector de luces
+    lights: Arc<Vec<Light>>,
     texture_manager: Arc<TextureManager>,
 ) {
     let num_threads = thread::available_parallelism().unwrap().get();
@@ -228,7 +244,7 @@ fn render_multithreaded(
 
     for i in 0..num_threads {
         let scene = Arc::clone(&scene);
-        let lights = Arc::clone(&lights); // Cambio: clonar vector de luces
+        let lights = Arc::clone(&lights);
         let texture_manager = Arc::clone(&texture_manager);
         let camera = camera_config.clone();
         let tiles_ref = Arc::clone(&tiles_arc);
@@ -242,18 +258,17 @@ fn render_multithreaded(
                 for y in y1..y2 {
                     for x in x1..x2 {
                         let ray_dir = camera.get_ray_direction(x, y);
-                        
-                        // Cambio: calcular iluminación con múltiples luces
+
                         let color_vec = trace_ray_multi_light(
-                            camera.pos, 
-                            ray_dir, 
-                            0, 
-                            2, 
-                            &scene, 
-                            &lights, // Pasar vector de luces
-                            &texture_manager
+                            camera.pos,
+                            ray_dir,
+                            0,
+                            2,
+                            &scene,
+                            &lights,
+                            &texture_manager,
                         );
-                        
+
                         let color_u32 = color_to_u32(vector3_to_color(color_vec));
                         local_pixels.push((x, y, color_u32));
                     }
@@ -319,7 +334,8 @@ impl CameraConfig {
 
     #[inline]
     fn get_ray_direction(&self, x: usize, y: usize) -> Vector3 {
-        let px = (2.0 * ((x as f32 + 0.5) / self.width as f32) - 1.0) * self.fov_tan * self.aspect_ratio;
+        let px =
+            (2.0 * ((x as f32 + 0.5) / self.width as f32) - 1.0) * self.fov_tan * self.aspect_ratio;
         let py = (1.0 - 2.0 * ((y as f32 + 0.5) / self.height as f32)) * self.fov_tan;
         (self.forward + self.right * px + self.up * py).normalized()
     }

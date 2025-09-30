@@ -57,9 +57,9 @@ pub fn create_optimized_scene() -> Vec<Block> {
     }
 
     // Camino de piedra
-    blocks.push(BlockType::Stone.to_block(Vector3::new(0.0, -0.9, -2.0), 1.0));
-    blocks.push(BlockType::Stone.to_block(Vector3::new(1.0, -0.9, -2.0), 1.0));
-    blocks.push(BlockType::Stone.to_block(Vector3::new(2.0, -0.9, -1.0), 1.0));
+    blocks.push(BlockType::Stone.to_block(Vector3::new(0.0, -1.0, -2.0), 1.0));
+    blocks.push(BlockType::Stone.to_block(Vector3::new(1.0, -1.0, -2.0), 1.0));
+    blocks.push(BlockType::Stone.to_block(Vector3::new(2.0, -1.0, -1.0), 1.0));
 
     // Jardín
     blocks.push(BlockType::Dirt.to_block(Vector3::new(-3.0, -1.0, 0.0), 1.0));
@@ -72,6 +72,8 @@ pub fn create_optimized_scene() -> Vec<Block> {
     blocks.push(BlockType::Metal.to_block(Vector3::new(0.0, 2.0, 0.0), 1.0));
     blocks.push(BlockType::Glass.to_block(Vector3::new(-2.0, 0.0, -2.0), 1.0));
     blocks.push(BlockType::WoodLog.to_block(Vector3::new(2.0, 0.0, 2.0), 1.0));
+
+    blocks.push(BlockType::Sun.to_block(Vector3::new(0.0, 10.0, 0.0), 5.0));
 
     println!("Escena creada con {} bloques", blocks.len());
     blocks

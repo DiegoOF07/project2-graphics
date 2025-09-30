@@ -2,17 +2,35 @@
 use raylib::prelude::*;
 use crate::material::Material;
 use crate::ray_intersect::{Intersect, RayIntersect};
+use crate::light::Light;
 
 #[derive(Debug, Clone)]
 pub struct Block {
     pub position: Vector3,
     pub size: f32,
     pub material: Material,
+    pub emission: Option<Light>,
 }
 
 impl Block {
     pub fn new(position: Vector3, size: f32, material: Material) -> Self {
-        Self { position, size, material }
+        Self { position, size, material, emission: None }
+    }
+
+    pub fn new_emissive(
+        position: Vector3,
+        size: f32,
+        material: Material,
+        color: Vector3,
+        intensity: f32,
+    ) -> Self {
+        let light = Light::new(position, color, intensity);
+        Self {
+            position,
+            size,
+            material,
+            emission: Some(light),
+        }
     }
 
     /// Calcula UV básicos según la cara golpeada y el punto local.
