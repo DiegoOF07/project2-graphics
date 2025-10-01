@@ -31,6 +31,12 @@ pub struct Material {
 
     /// Ruta opcional a un normal map.
     pub normal_map_id: Option<String>,
+
+    /// Ruta opcional para el color del halo de luz
+    pub emission_color: Option<Vector3>,
+
+    /// Intensidad de la luz emitida
+    pub emission_strength: f32, 
 }
 
 impl Material {
@@ -54,6 +60,34 @@ impl Material {
             refractive_index,
             texture,
             normal_map_id,
+            emission_color: None,
+            emission_strength: 0.0,
+        }
+    }
+
+    pub fn new_emissive(
+        diffuse: Vector3,
+        albedo: [f32; 2],
+        specular: f32,
+        reflectivity: f32,
+        transparency: f32,
+        refractive_index: f32,
+        texture: Option<String>,
+        normal_map_id: Option<String>,
+        emission_color: Option<Vector3>,
+        emission_strength: f32,
+    ) -> Self {
+        Self {
+            diffuse,
+            albedo,
+            specular,
+            reflectivity,
+            transparency,
+            refractive_index,
+            texture,
+            normal_map_id,
+            emission_color,
+            emission_strength,
         }
     }
 
@@ -68,6 +102,8 @@ impl Material {
             refractive_index: 0.0,
             texture: None,
             normal_map_id: None,
+            emission_color: None,
+            emission_strength: 0.0,
         }
     }
 }

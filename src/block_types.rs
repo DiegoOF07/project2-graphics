@@ -31,6 +31,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/grass_top.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Dirt => Material {
                 diffuse: Vector3::new(0.4, 0.3, 0.2),
@@ -41,6 +43,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/dirt.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Stone => Material {
                 diffuse: Vector3::new(0.5, 0.5, 0.5),
@@ -51,6 +55,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/stone.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Cobble => Material {
                 diffuse: Vector3::new(0.6, 0.6, 0.6),
@@ -61,6 +67,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/cobble.png".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::WoodPlank => Material {
                 diffuse: Vector3::new(0.8, 0.5, 0.2),
@@ -71,6 +79,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/wood_oak.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::WoodLog => Material {
                 diffuse: Vector3::new(0.4, 0.3, 0.1),
@@ -81,6 +91,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/wood_oak_log.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Leaves => Material {
                 diffuse: Vector3::new(0.2, 0.6, 0.2),
@@ -91,6 +103,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/leaves_oak.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::DeepslateBricks => Material {
                 diffuse: Vector3::new(0.7, 0.3, 0.2),
@@ -101,6 +115,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/deepslate_bricks.jpg".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Glass => Material {
                 diffuse: Vector3::new(0.9, 0.9, 1.0),
@@ -111,6 +127,8 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: Some("textures/glass.png".to_string()),
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Metal => Material {
                 diffuse: Vector3::new(0.9, 0.9, 0.95),
@@ -121,34 +139,35 @@ impl BlockType {
                 refractive_index: 1.0,
                 texture: None,
                 normal_map_id: None,
+                emission_color: None,
+                emission_strength: 0.0,
             },
             BlockType::Sun => Material {
-                diffuse: Vector3::new(1.0, 1.0, 0.8),
-                albedo: [1.0, 0.0],
+                diffuse: Vector3::new(1.0, 0.9, 0.6),
+                albedo: [0.0, 0.0],
                 specular: 0.0,
                 reflectivity: 0.0,
                 transparency: 0.0,
                 refractive_index: 1.0,
                 texture: None,
                 normal_map_id: None,
+                emission_color: Some(Vector3::new(1.0, 0.9, 0.6)),
+                emission_strength: 4.0,
             },
         }
     }
 
     /// Crea un bloque de este tipo en una posición dada
     pub fn to_block(&self, position: Vector3, size: f32) -> Block {
-    match self {
-        BlockType::Sun => {
-            Block::new_emissive(
+        match self {
+            BlockType::Sun => Block::new_emissive(
                 position,
                 size,
                 self.material(),
                 Vector3::new(1.0, 0.95, 0.7),
-                5.0, 
-            )
+                4.0,
+            ),
+            _ => Block::new(position, size, self.material()),
         }
-        _ => Block::new(position, size, self.material()),
     }
-}
-
 }

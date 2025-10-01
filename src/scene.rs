@@ -73,7 +73,9 @@ pub fn create_optimized_scene() -> Vec<Block> {
     blocks.push(BlockType::Glass.to_block(Vector3::new(-2.0, 0.0, -2.0), 1.0));
     blocks.push(BlockType::WoodLog.to_block(Vector3::new(2.0, 0.0, 2.0), 1.0));
 
-    blocks.push(BlockType::Sun.to_block(Vector3::new(0.0, 10.0, 0.0), 5.0));
+    blocks.push(BlockType::Sun.to_block(Vector3::new(0.0, 5.0, -5.0), 1.0));
+    blocks.push(BlockType::Sun.to_block(Vector3::new(0.0, 5.0, 5.0), 1.0));
+
 
     println!("Escena creada con {} bloques", blocks.len());
     blocks

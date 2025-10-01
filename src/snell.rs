@@ -148,7 +148,7 @@ fn sky_color(dir: &Vector3) -> Vector3 {
 
 // === FUNCIONES PRINCIPALES DE RAYTRACING ===
 
-/// Raytracer principal con múltiples luces, reflexiones y transparencia
+/// Raytracer principal con múltiples luces, reflexiones y transparencia + fake glow
 pub fn trace_ray_multi_light(
     origin: Vector3,
     dir: Vector3,
@@ -183,6 +183,26 @@ pub fn trace_ray_multi_light(
     if !lights.is_empty() {
         final_color = final_color / lights.len() as f32;
     }
+
+    // === Emisión normal ===
+    if let Some(emission) = &material.emission_color {
+        final_color = final_color + *emission * material.emission_strength;
+
+        // --- Fake glow extra ---
+        let glow_strength = material.emission_strength;
+
+        // Ángulo entre la normal y la dirección de la cámara
+        let view_dir = -dir.normalized();
+        let angle_factor = intersect.normal.dot(view_dir).clamp(0.0, 1.0).powf(2.0);
+
+        // Atenuación por distancia
+        let dist = (intersect.point - origin).length();
+        let dist_factor = 1.0 / (1.0 + 0.15 * dist);
+
+        // Añadir glow (más suave que la emisión directa)
+        final_color = final_color + *emission * glow_strength * angle_factor * dist_factor * 2.0;
+    }
+
     final_color = final_color + base_color * 0.08; // ambiente sutil
 
     // === reflexión y refracción ===
@@ -257,6 +277,7 @@ pub fn trace_ray_multi_light(
         final_color.z.clamp(0.0, 1.0),
     )
 }
+
 
 /// Calcula el coeficiente de reflexión de Fresnel
 fn calculate_fresnel(cos_i: f32, refractive_index: f32) -> f32 {
