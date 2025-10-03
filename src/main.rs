@@ -61,13 +61,13 @@ fn main() {
     lights_vec.push(Light::new(
         Vector3::new(-5.0, 6.0, 5.0), // Luz secundaria
         Vector3::new(0.6, 0.7, 1.0),  // Fría/azulada
-        0.9,
+        2.0,
     ));
-    // lights_vec.push(Light::new(
-    //     Vector3::new(0.0, 6.0, 0.0), // Luz cenital
-    //     Vector3::new(1.0, 1.0, 0.9), // Blanca suave
-    //     0.6,
-    // ));
+    lights_vec.push(Light::new(
+        Vector3::new(0.0, 6.0, 0.0), // Luz cenital
+        Vector3::new(1.0, 1.0, 0.9), // Blanca suave
+        1.6,
+    ));
     let lights = Arc::new(lights_vec);
     let texture_manager = Arc::new(texture_manager);
 

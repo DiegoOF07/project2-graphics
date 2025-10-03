@@ -140,7 +140,7 @@ fn sky_color(dir: &Vector3) -> Vector3 {
     let t = (dir.y * 0.5 + 0.5).clamp(0.0, 1.0); // Mapear [-1,1] a [0,1]
 
     // Gradiente de horizonte (naranja) a cenit (azul)
-    let horizon_color = Vector3::new(0.8, 0.6, 0.4);
+    let horizon_color = Vector3::new(0.98, 0.92, 0.88); // Casi blanco con tono cálido
     let zenith_color = Vector3::new(0.2, 0.4, 0.8);
 
     horizon_color * (1.0 - t) + zenith_color * t
@@ -184,23 +184,29 @@ pub fn trace_ray_multi_light(
         final_color = final_color / lights.len() as f32;
     }
 
-    // === Emisión normal ===
-    if let Some(emission) = &material.emission_color {
-        final_color = final_color + *emission * material.emission_strength;
+    // === Emisión basada en textura o diffuse ===
+    if material.emission_strength > 0.0 {
+        // Si el bloque tiene textura, úsala como "emission base"
+        let emission_base = if material.texture.is_some() {
+            base_color // viene de get_material_color(), ya con textura aplicada
+        } else if let Some(emission) = &material.emission_color {
+            *emission
+        } else {
+            material.diffuse
+        };
+
+        // Emisión directa
+        final_color = final_color + emission_base * material.emission_strength;
 
         // --- Fake glow extra ---
         let glow_strength = material.emission_strength;
-
-        // Ángulo entre la normal y la dirección de la cámara
         let view_dir = -dir.normalized();
         let angle_factor = intersect.normal.dot(view_dir).clamp(0.0, 1.0).powf(2.0);
-
-        // Atenuación por distancia
         let dist = (intersect.point - origin).length();
         let dist_factor = 1.0 / (1.0 + 0.15 * dist);
 
-        // Añadir glow (más suave que la emisión directa)
-        final_color = final_color + *emission * glow_strength * angle_factor * dist_factor * 2.0;
+        final_color =
+            final_color + emission_base * glow_strength * angle_factor * dist_factor * 2.0;
     }
 
     final_color = final_color + base_color * 0.08; // ambiente sutil
@@ -277,7 +283,6 @@ pub fn trace_ray_multi_light(
         final_color.z.clamp(0.0, 1.0),
     )
 }
-
 
 /// Calcula el coeficiente de reflexión de Fresnel
 fn calculate_fresnel(cos_i: f32, refractive_index: f32) -> f32 {
