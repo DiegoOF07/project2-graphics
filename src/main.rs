@@ -34,6 +34,7 @@ fn main() {
     let (mut rl, thread) = raylib::init()
         .size(SCREEN_WIDTH * RENDER_SCALE, SCREEN_HEIGHT * RENDER_SCALE)
         .title("Minecraft Raytracer")
+        .log_level(TraceLogLevel::LOG_INFO)
         .build();
     rl.set_target_fps(60);
 
@@ -61,12 +62,12 @@ fn main() {
     lights_vec.push(Light::new(
         Vector3::new(-5.0, 6.0, 5.0), // Luz secundaria
         Vector3::new(0.6, 0.7, 1.0),  // Fría/azulada
-        2.0,
+        3.0,
     ));
     lights_vec.push(Light::new(
         Vector3::new(0.0, 6.0, 0.0), // Luz cenital
         Vector3::new(1.0, 1.0, 0.9), // Blanca suave
-        1.6,
+        2.6,
     ));
     let lights = Arc::new(lights_vec);
     let texture_manager = Arc::new(texture_manager);

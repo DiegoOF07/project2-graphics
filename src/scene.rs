@@ -189,13 +189,13 @@ pub fn create_optimized_scene() -> Vec<Block> {
     blocks.push(BlockType::Leaves.to_block(Vector3::new(-3.0, 2.0, 2.0), 1.0));
     blocks.push(BlockType::Leaves.to_block(Vector3::new(-3.0, 2.0, 1.0), 1.0));
 
-    // // === BLOQUES DE MAGMA repartidos por el suelo (puntos calientes) ===
     let magma_spots = vec![
         (-3.0, 3.0),
         (0.0, 3.0),
         (3.0, -3.0),
         (-1.0,3.0),
         (-1.0, 2.0),
+        (-1.0,-1.0),
     ];
     for (mx, mz) in magma_spots {
         // poner magma sobre la capa de superficie (y = 0)

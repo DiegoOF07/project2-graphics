@@ -16,7 +16,6 @@ pub enum BlockType {
     Reflect,
     CherryLeaves,
     Sun,
-    Water,
     Magma,
 }
 
@@ -126,7 +125,7 @@ impl BlockType {
                 specular: 200.0,
                 reflectivity: 0.0,
                 transparency: 0.8,
-                refractive_index: 1.2,
+                refractive_index: 1.5,
                 texture: Some("textures/glass.png".to_string()),
                 normal_map_id: None,
                 emission_color: None,
@@ -144,18 +143,6 @@ impl BlockType {
                 emission_color: None,
                 emission_strength: 0.0,
             },
-            BlockType::Water => Material {
-                diffuse: Vector3::new(0.2, 0.4, 0.9),
-                albedo: [0.2, 0.8],
-                specular: 30.0,
-                reflectivity: 0.9,
-                transparency: 0.1,
-                refractive_index: 1.2,
-                texture: None,
-                normal_map_id: None,
-                emission_color: None,
-                emission_strength: 0.0,
-            },
             BlockType::Sun => Material {
                 diffuse: Vector3::new(1.0, 0.9, 0.6),
                 albedo: [0.0, 0.0],
@@ -166,7 +153,7 @@ impl BlockType {
                 texture: None,
                 normal_map_id: None,
                 emission_color: Some(Vector3::new(1.0, 0.9, 0.9)),
-                emission_strength: 5.0,
+                emission_strength: 10.0,
             },
             BlockType::Magma => Material {
                 diffuse: Vector3::new(0.7, 0.28, 0.1),
@@ -191,14 +178,14 @@ impl BlockType {
                 size,
                 self.material(),
                 Vector3::new(1.0, 0.9, 0.9),
-                4.0,
+                8.0,
             ),
             BlockType::Magma => Block::new_emissive(
                 position,
                 size,
                 self.material(),
                 Vector3::new(0.75, 0.32, 0.12),
-                0.4,
+                0.5,
             ),
             _ => Block::new(position, size, self.material()),
         }
